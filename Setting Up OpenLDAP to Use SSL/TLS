@@ -1,0 +1,79 @@
+First, update your system, configure your hostname, and then install OpenLDAP:
+
+sudo yum update
+
+vim /etc/hosts 
+
+Update 127.0.0.1 to your new hostname — should be formatted: IP FQDN short server name.
+
+For instance: 127.0.0.1 ldapsrv.local ldapsrv.
+
+Then, install OpenLDAP:
+
+sudo yum -y install openldap compat-openldap openldap-clients openldap-servers openldap-servers-sql openldap-devel
+
+Go ahead and start and enable the slapd service, and then reset the slap password. Make sure to copy the generated password hash for use later.
+
+systemctl start slapd.service
+systemctl enable slapd.service
+slappasswd
+
+Configure the OpenLDAP configuration to use your domain name established when you changed the hostname and the username/password combination you just changed with slappasswd:
+
+cd /etc/openldap/slapd.d
+vim init.ldif
+
+Then, paste the following, modifying dc=____ to your domain name. So, for instance, if you changed the hostname to ldapserv.local, then dc=local. But if you changed it to ldapsrv.local.com, then line 4 should read olcSuffix: dc=local, dc=com. Then, on the last line, make sure to copy and paste your newly generated password hash, or else authentication will fail when trying to commit changes to the configuration.
+
+Dn: olcDatabase={2}hdb, cn=config
+changetype: modify
+Replace: olcSuffix
+olcSuffix: dc=local
+
+Dn: olcDatabase={2}hdb, cn=config
+changetype: modify
+Replace: olcRootDN
+olcSuffix: cn=ldap, dc=local
+
+Dn: olcDatabase={2}hdb, cn=config
+changetype: modify
+Replace: olcRootPW
+olcRootPW: {SSHA}AmuhKv7p8YuN/JYHV0ph1kFOQRkQhpYm/
+
+Commit those changes:
+
+ldapmodify -Y EXTERNAL -H ldapi:/// -f init.ldif
+
+Generate your key pair, and give the ldap user ownership of the location where you store them:
+
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/openldap/certs/ldaptest.key -out /etc/openldap/certs/ldaptest.crt
+
+chown -R ldap:ldap /etc/openldap/certs/
+
+Create an ldif file that modifies the OpenLDAP config to use the certs we just created:
+
+vim certs.ldif
+
+Copy the below changes to the ldif file (of course substituting the appropriate directory and file names into lines 4 and 9):
+
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateKeyFile
+olcTLSCertificateKeyFile: /etc/openldap/certs/ldaptest.key
+
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateFile
+olcTLSCertificateFile: /etc/openldap/certs/ldaptest.crt
+
+Commit those changes to the configuration:
+
+ldapmodify -Y EXTERNAL -H ldapi:/// -f certs.ldif
+
+Note: You can test the configuration at any time by running:
+
+slaptest -u
+
+You can always check your current configuration by opening the cn=config.ldif file:
+
+vim cn=config.ldif
