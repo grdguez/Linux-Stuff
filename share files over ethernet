@@ -1,0 +1,4 @@
+Receiver:
+netcat -l -p 7000 | tar x
+Sender:
+tar cf - * | netcat RECEIVINGHOST 7000
